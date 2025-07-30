@@ -13,22 +13,62 @@ if exist "version.txt" (
 echo Current version: %CURRENT_VERSION%
 set /p "NEW_VERSION=Enter new version (e.g., 1.0.1): "
 
-:: Validate version format - SIMPLER AND MORE RELIABLE METHOD
+:: DEBUG: Show exactly what was entered
+echo DEBUG: You entered: "%NEW_VERSION%"
+echo DEBUG: Length: %NEW_VERSION:~0,1%
+
+:: Trim whitespace from input
+set "NEW_VERSION=%NEW_VERSION: =%"
+set "NEW_VERSION=%NEW_VERSION:"=%"
+set "NEW_VERSION=%NEW_VERSION:`=%"
+set "NEW_VERSION=%NEW_VERSION:'=%"
+
+:: DEBUG: Show cleaned version
+echo DEBUG: Cleaned version: "%NEW_VERSION%"
+
+:: Validate version format - SIMPLE AND RELIABLE METHOD
+set "VALID=true"
+
+:: Check for exactly two dots
 set "dot_count=0"
 for /f "delims=" %%a in ('echo %NEW_VERSION% ^| find /c "."') do set "dot_count=%%a"
 
-:: Check for invalid characters (anything that's not a digit or dot)
-echo %NEW_VERSION% | findstr /r "[^0-9\.]" >nul
-if %errorlevel% equ 0 (
-    echo ERROR: Version must contain only digits and dots
-    pause
-    exit /b 1
-)
-
-if %dot_count% neq 2 (
+if !dot_count! neq 2 (
+    set "VALID=false"
     echo ERROR: Version must be in format X.X.X (e.g., 1.0.0) with exactly two dots
     echo Your input: %NEW_VERSION%
     echo Expected format: major.minor.patch (e.g., 1.0.1)
+)
+
+:: Check for invalid characters
+echo %NEW_VERSION% | findstr /r "[^0-9\.]" >nul
+if !errorlevel! equ 0 (
+    :: This is correct - errorlevel 0 means match found (invalid characters)
+    set "VALID=false"
+    echo ERROR: Version must contain only digits and dots
+    echo Your input: %NEW_VERSION%
+)
+
+:: Check if version is greater than current
+for /f "tokens=1-3 delims=." %%a in ("%NEW_VERSION%") do (
+    for /f "tokens=1-3 delims=." %%x in ("%CURRENT_VERSION%") do (
+        if %%a lss %%x set "VALID=false"
+        if %%a equ %%x (
+            if %%b lss %%y set "VALID=false"
+            if %%b equ %%y (
+                if %%c leq %%z set "VALID=false"
+            )
+        )
+    )
+)
+if "!VALID!"=="false" (
+    echo ERROR: New version must be greater than current version (%CURRENT_VERSION%)
+)
+
+:: Exit if invalid
+if "!VALID!"=="false" (
+    echo.
+    echo Please correct the version format and try again.
     pause
     exit /b 1
 )
