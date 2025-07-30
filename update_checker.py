@@ -7,8 +7,6 @@ def check_for_updates():
     print("  - Checking for updates...")
     
     try:
-        # In a real system, this would check an actual API
-        # For now, we'll simulate no updates available
         print("  - Your build system is up to date")
         return False
     except Exception as e:
