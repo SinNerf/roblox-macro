@@ -13,10 +13,22 @@ if exist "version.txt" (
 echo Current version: %CURRENT_VERSION%
 set /p "NEW_VERSION=Enter new version (e.g., 1.0.1): "
 
-:: Validate version format
-echo %NEW_VERSION% | findstr /r "^[0-9]*\.[0-9]*\.[0-9]*$" >nul
-if %errorlevel% neq 0 (
-    echo ERROR: Version must be in format X.X.X (e.g., 1.0.0)
+:: Validate version format - SIMPLER AND MORE RELIABLE METHOD
+set "dot_count=0"
+for /f "delims=" %%a in ('echo %NEW_VERSION% ^| find /c "."') do set "dot_count=%%a"
+
+:: Check for invalid characters (anything that's not a digit or dot)
+echo %NEW_VERSION% | findstr /r "[^0-9\.]" >nul
+if %errorlevel% equ 0 (
+    echo ERROR: Version must contain only digits and dots
+    pause
+    exit /b 1
+)
+
+if %dot_count% neq 2 (
+    echo ERROR: Version must be in format X.X.X (e.g., 1.0.0) with exactly two dots
+    echo Your input: %NEW_VERSION%
+    echo Expected format: major.minor.patch (e.g., 1.0.1)
     pause
     exit /b 1
 )
