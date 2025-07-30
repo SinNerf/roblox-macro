@@ -3,58 +3,69 @@ setlocal enabledelayedexpansion
 
 title Roblox Macro - Release Builder
 
-:: Get current version
+:: Read current version
 set "CURRENT_VERSION=1.0.0"
 if exist "version.txt" (
     set /p CURRENT_VERSION=<version.txt
 )
 
 :: Prompt for new version
+echo.
 echo Current version: %CURRENT_VERSION%
-set /p "NEW_VERSION=Enter new version: "
+set /p "NEW_VERSION=Enter new version (format X.X.X, e.g., 1.0.1): "
 
-:: Simple validation
-echo %NEW_VERSION% | findstr /r "[0-9][.][0-9][.][0-9]" >nul
+:: Validate version format (must be X.X.X)
+echo %NEW_VERSION% | findstr /r "^[0-9]*\.[0-9]*\.[0-9]*$" >nul
 if %errorlevel% neq 0 (
-    echo ERROR: Version must be in format X.X.X (e.g., 1.0.0)
+    echo.
+    echo ERROR: Invalid version format. Use numbers and dots only: X.X.X
     echo Example: 1.0.1
     pause
     exit /b 1
 )
 
-:: Update version file
+:: Confirm
+echo.
+echo Creating version: %NEW_VERSION%
+echo Press any key to continue or Ctrl+C to cancel...
+pause >nul
+
+:: Update version.txt
 echo %NEW_VERSION% > version.txt
 
-:: Build the application
+:: Run build script (assumes you have build.bat that creates the app)
 echo.
-echo Building application...
+echo Building Roblox Macro application...
 call build.bat
 
-:: Create ZIP of the build
-echo.
-echo Creating ZIP file...
-set "ZIP_NAME=RobloxMacro_v%NEW_VERSION%.zip"
-cd build
-for /f "delims=" %%a in ('dir /b /ad /od RobloxMacro_*') do set "LATEST_BUILD=%%a"
-powershell -Command "Compress-Archive -Path '%LATEST_BUILD%\*' -DestinationPath '%ZIP_NAME%' -Force"
-cd ..
+:: Create build folder
+if not exist "build" mkdir build
 
-:: Instructions for GitHub release
+:: Create ZIP
 echo.
-echo RELEASE INSTRUCTIONS:
-echo =====================
-echo 1. Go to your GitHub repository: https://github.com/SinNerf/roblox-macro
-echo 2. Click "Releases" > "Draft a new release"
-echo 3. Tag version: v%NEW_VERSION%
-echo 4. Release title: "Version %NEW_VERSION%"
-echo 5. Description: "New version of Roblox Macro Recorder"
-echo 6. Drag and drop this file to upload:
+echo Creating ZIP package...
+set "ZIP_NAME=RobloxMacro_v%NEW_VERSION%.zip"
+cd /d "build"
+powershell -Command "Remove-Item '%ZIP_NAME%' -ErrorAction Ignore"
+cd ..
+powershell -Command "Compress-Archive -Path 'RobloxMacro_*\*' -DestinationPath 'build\%ZIP_NAME%' -Force"
+
+:: Show release instructions
+echo.
+echo ====================================================
+echo RELEASE INSTRUCTIONS
+echo ====================================================
+echo 1. Go to: https://github.com/SinNerf/roblox-macro/releases
+echo 2. Click "Draft a new release"
+echo 3. Tag: v%NEW_VERSION%
+echo 4. Title: Version %NEW_VERSION%
+echo 5. Description: New update available!
+echo 6. Upload file:
 echo    %cd%\build\%ZIP_NAME%
-echo 7. Click "Publish release"
+echo 7. Publish release
 echo.
-echo USERS WILL AUTOMATICALLY GET THIS UPDATE WHEN THEY RUN THE UPDATER!
+echo ✅ Users will auto-update via RobloxMacroUpdater.exe!
 echo.
-echo Press any key to open the build folder...
-pause >nul
+echo Opening build folder...
 explorer "build"
-endlocal
+pause
