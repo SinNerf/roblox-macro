@@ -1,0 +1,15 @@
+{
+  "always_on_top": true,
+  "playback_speed": 1.0,
+  "jitter_amount": 2,
+  "hover_delay": 0.30000001192092896,
+  "start_key": "[",
+  "stop_key": "]",
+  "human_like_mouse": true,
+  "mouse_acceleration": 0.5,
+  "micro_jitter": 0.5,
+  "path_smoothing": 0.5,
+  "repeat_enabled": false,
+  "repeat_infinite": true,
+  "repeat_count": 6
+}
