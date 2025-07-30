@@ -1,0 +1,5 @@
+dearpygui==1.11.0
+pynput==1.7.6
+pywin32==306
+numpy==1.26.4
+Pillow==10.3.0
