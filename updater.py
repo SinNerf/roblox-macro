@@ -13,7 +13,7 @@ def check_for_updates():
     """Check GitHub for updates (using GitHub Releases)"""
     try:
         # Your GitHub repository info
-        owner = "your-github-username"  # REPLACE WITH YOUR GITHUB USERNAME
+        owner = "SinNerf"  # REPLACE WITH YOUR GITHUB USERNAME
         repo = "roblox-macro"           # REPLACE WITH YOUR REPO NAME
         
         # Get latest release info
