@@ -46,28 +46,29 @@ if !errorlevel! equ 0 (
     echo Your input: %NEW_VERSION%
 )
 
-:: Simple version comparison (convert to numeric values)
-for /f "tokens=1-3 delims=." %%a in ("%NEW_VERSION%") do (
-    set /a NEW_MAJOR=%%a
-    set /a NEW_MINOR=%%b
-    set /a NEW_PATCH=%%c
+:: Convert versions to numeric values for safe comparison
+for /f "tokens=1-3 delims=." %%a in ("%CURRENT_VERSION%") do (
+    set /a CURRENT_MAJOR=1000000 * 1000000 * %%a
+    set /a CURRENT_MINOR=1000 * 1000 * %%b
+    set /a CURRENT_PATCH=%%c
+    set /a CURRENT_NUMERIC=!CURRENT_MAJOR! + !CURRENT_MINOR! + !CURRENT_PATCH!
 )
 
-for /f "tokens=1-3 delims=." %%a in ("%CURRENT_VERSION%") do (
-    set /a CURRENT_MAJOR=%%a
-    set /a CURRENT_MINOR=%%b
-    set /a CURRENT_PATCH=%%c
+for /f "tokens=1-3 delims=." %%a in ("%NEW_VERSION%") do (
+    set /a NEW_MAJOR=1000000 * 1000000 * %%a
+    set /a NEW_MINOR=1000 * 1000 * %%b
+    set /a NEW_PATCH=%%c
+    set /a NEW_NUMERIC=!NEW_MAJOR! + !NEW_MINOR! + !NEW_PATCH!
 )
 
 :: Compare versions numerically
-if !NEW_MAJOR! lss !CURRENT_MAJOR! set VALID=false
-if !NEW_MAJOR! equ !CURRENT_MAJOR! (
-    if !NEW_MINOR! lss !CURRENT_MINOR! set VALID=false
-    if !NEW_MINOR! equ !CURRENT_MINOR! (
-        if !NEW_PATCH! leq !CURRENT_PATCH! set VALID=false
-    )
+if !NEW_NUMERIC! leq !CURRENT_NUMERIC! (
+    set VALID=false
+    echo ERROR: New version must be greater than current version (%CURRENT_VERSION%)
+    echo Your input: %NEW_VERSION%
 )
 
+:: Exit if invalid
 if "!VALID!"=="false" (
     echo.
     echo Please correct the version format and try again.
