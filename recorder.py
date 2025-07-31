@@ -2,6 +2,8 @@ import time
 import numpy as np
 from pynput import mouse, keyboard
 from config import Config
+import win32api  # Added to get screen resolution
+import win32con
 
 class Recorder:
     def __init__(self):
@@ -12,6 +14,9 @@ class Recorder:
         self.mouse_listener = None
         self.keyboard_listener = None
         self.key_press_times = {}  # Track exact press durations
+        # Store screen resolution when recording starts
+        self.recorded_width = win32api.GetSystemMetrics(0)
+        self.recorded_height = win32api.GetSystemMetrics(1)
     
     def start(self):
         if self.is_recording: return
@@ -19,6 +24,10 @@ class Recorder:
         self.events = []
         self.key_press_times = {}
         self.start_time = time.perf_counter()  # MICROSECOND PRECISION
+        
+        # Capture current screen resolution when starting recording
+        self.recorded_width = win32api.GetSystemMetrics(0)
+        self.recorded_height = win32api.GetSystemMetrics(1)
         
         self.mouse_listener = mouse.Listener(
             on_move=self.on_move,
@@ -48,7 +57,11 @@ class Recorder:
     def on_move(self, x, y):
         if not self.is_recording: return
         timestamp = time.perf_counter() - self.start_time
-        self.events.append(("move", x, y, timestamp))
+        # Store resolution info with the first move event
+        if not self.events or self.events[-1][0] != "move":
+            self.events.append(("move", x, y, (self.recorded_width, self.recorded_height), timestamp))
+        else:
+            self.events.append(("move", x, y, timestamp))
     
     def on_click(self, x, y, button, pressed):
         if not self.is_recording: return
