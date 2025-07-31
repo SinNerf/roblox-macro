@@ -140,26 +140,36 @@ class Player:
     
     def _human_like_move(self, start_x, start_y, end_x, end_y):
         """Move mouse from start to end with human-like characteristics"""
-        # Scale the end position to current resolution if needed
-        end_x, end_y = self.scale_coordinates(end_x, end_y)
-        
         # Calculate distance
         distance = math.sqrt((end_x - start_x)**2 + (end_y - start_y)**2)
+    
+        # Skip human-like movement for very short distances (prevents jitter)
+        if distance < 5:
+            self._move_mouse(int(end_x), int(end_y))
+            return
+        
         # Determine number of intermediate points based on distance
-        # Cap at 20 points for very long movements to avoid excessive processing
         num_points = max(3, min(20, int(distance / 8)))
+    
         # Generate smooth path with Bezier curve
         points = self._generate_bezier_path(start_x, start_y, end_x, end_y, num_points, distance)
+    
         # Add micro jitter to path (scaled by distance)
         points = self._add_micro_jitter(points, distance)
+    
         # Calculate timing with acceleration/deceleration
         timings = self._calculate_human_timing(num_points, distance)
+    
         # Move through each point with proper timing
         for i, (x, y) in enumerate(points):
+            # Skip the first point (we're already there)
+            if i == 0:
+                continue
+            
             self._move_mouse(int(x), int(y))
             # Sleep according to timing profile
-            if i < len(timings) - 1:
-                precise_sleep(timings[i] * self.playback_speed)
+            if i < len(timings):
+                precise_sleep(timings[i-1] * self.playback_speed)
     
     def _generate_bezier_path(self, x0, y0, x1, y1, num_points, distance):
         """Generate a smooth Bezier curve path between two points"""

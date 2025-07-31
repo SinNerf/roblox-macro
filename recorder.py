@@ -1,3 +1,4 @@
+import math
 import time
 import numpy as np
 from pynput import mouse, keyboard
@@ -56,12 +57,16 @@ class Recorder:
     
     def on_move(self, x, y):
         if not self.is_recording: return
+    
+        # Skip if this is too close to the last position (reduces noise)
+        if self.events and self.events[-1][0] == "move":
+            last_x, last_y = self.events[-1][1], self.events[-1][2]
+            distance = math.sqrt((x - last_x)**2 + (y - last_y)**2)
+            if distance < 2:  # Only record if moved at least 2 pixels
+                return
+            
         timestamp = time.perf_counter() - self.start_time
-        # Store resolution info with the first move event
-        if not self.events or self.events[-1][0] != "move":
-            self.events.append(("move", x, y, (self.recorded_width, self.recorded_height), timestamp))
-        else:
-            self.events.append(("move", x, y, timestamp))
+        self.events.append(("move", x, y, timestamp))
     
     def on_click(self, x, y, button, pressed):
         if not self.is_recording: return

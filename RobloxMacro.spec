@@ -5,7 +5,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('player.py', '.'), ('recorder.py', '.'), ('config.py', '.'), ('hook-win32api.py', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
