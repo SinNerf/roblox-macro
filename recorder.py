@@ -16,13 +16,18 @@ class Recorder:
         self.keyboard_listener = None
         self.key_press_times = {}  # Track exact press times
         self.active_keys = set()  # Track currently pressed keys
-        self.gaming_mode = self.config.get("gaming_mode", False)
         
         # Get virtual screen dimensions for multi-monitor support
         self.virtual_screen_width = win32api.GetSystemMetrics(78)  # SM_CXVIRTUALSCREEN
         self.virtual_screen_height = win32api.GetSystemMetrics(79)  # SM_CYVIRTUALSCREEN
         self.virtual_screen_left = win32api.GetSystemMetrics(76)  # SM_XVIRTUALSCREEN
         self.virtual_screen_top = win32api.GetSystemMetrics(77)  # SM_YVIRTUALSCREEN
+        
+        # FIX: Handle default values properly for Config.get()
+        try:
+            self.gaming_mode = self.config.get("gaming_mode")
+        except (KeyError, TypeError):
+            self.gaming_mode = False
     
     def start(self):
         if self.is_recording: return

@@ -5,6 +5,7 @@ import numpy as np
 from config import Config
 import ctypes
 import math
+
 # High-precision sleep function (better than time.sleep)
 kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
 kernel32.QueryPerformanceCounter.argtypes = [ctypes.POINTER(ctypes.c_int64)]
@@ -27,16 +28,7 @@ class Player:
     def __init__(self):
         self.config = Config()
         self.is_playing = False
-        self.playback_speed = self.config.get("playback_speed", 1.0)
-        self.jitter = self.config.get("jitter_amount", 0.3)
-        self.hover_delay = self.config.get("hover_delay", 0.1)
-        self.human_like_mouse = self.config.get("human_like_mouse", True)
-        self.mouse_acceleration = self.config.get("mouse_acceleration", 0.7)
-        self.micro_jitter = self.config.get("micro_jitter", 0.2)
-        self.path_smoothing = self.config.get("path_smoothing", 0.5)
-        self.key_durations = {}  # Track expected key durations
         self.active_keys = set()  # Track currently pressed keys for gaming
-        self.gaming_mode = self.config.get("gaming_mode", False)
         
         # Get virtual screen dimensions for multi-monitor support
         self.virtual_screen_width = win32api.GetSystemMetrics(78)  # SM_CXVIRTUALSCREEN
@@ -45,11 +37,32 @@ class Player:
         self.virtual_screen_top = win32api.GetSystemMetrics(77)  # SM_YVIRTUALSCREEN
         
         # Track last valid position to prevent wild jumps
-        self.last_valid_x, self.last_valid_y = win32api.GetCursorPos()
-        self.last_valid_x = (self.last_valid_x - self.virtual_screen_left) / self.virtual_screen_width
-        self.last_valid_y = (self.last_valid_y - self.virtual_screen_top) / self.virtual_screen_height
-        self.last_valid_x = max(0.0, min(1.0, self.last_valid_x))
-        self.last_valid_y = max(0.0, min(1.0, self.last_valid_y))
+        self.last_valid_x = None
+        self.last_valid_y = None
+        self.key_durations = {}  # Track expected key durations
+        
+        # Load config values with error handling
+        self._load_config()
+    
+    def _load_config(self):
+        """Safely load config values with default fallbacks"""
+        config_defaults = {
+            "playback_speed": 1.0,
+            "jitter_amount": 0.5,  # Reduced from 2.0 for less wiggling
+            "hover_delay": 0.15,   # Reduced from 0.3 for more responsive clicks
+            "human_like_mouse": True,
+            "mouse_acceleration": 0.7,
+            "micro_jitter": 0.1,   # Reduced from 0.2 for less wiggling
+            "path_smoothing": 0.5,
+            "gaming_mode": False
+        }
+        
+        for key, default in config_defaults.items():
+            try:
+                value = self.config.get(key)
+                setattr(self, key, value)
+            except (KeyError, TypeError):
+                setattr(self, key, default)
     
     def play(self, recording_data):
         if self.is_playing: return
@@ -58,25 +71,31 @@ class Player:
         # Extract recording data
         virtual_screen = recording_data.get("virtual_screen", {})
         events = recording_data.get("events", [])
-        self.gaming_mode = recording_data.get("gaming_mode", self.gaming_mode)
+        
+        # Handle gaming mode from recording data or config
+        if "gaming_mode" in recording_data:
+            self.gaming_mode = recording_data["gaming_mode"]
+        else:
+            try:
+                self.gaming_mode = self.config.get("gaming_mode")
+            except (KeyError, TypeError):
+                self.gaming_mode = False
         
         # Adjust for different gaming mode settings if needed
         if self.gaming_mode:
             # For gaming, use more direct mouse movements and precise timing
             self.path_smoothing = max(0.3, self.path_smoothing)
             self.mouse_acceleration = min(0.6, self.mouse_acceleration)
-            self.micro_jitter = min(0.1, self.micro_jitter)
+            self.micro_jitter = min(0.05, self.micro_jitter)  # Even less jitter for gaming
             self.hover_delay = min(0.05, self.hover_delay)
         
         start_time = time.perf_counter()
         last_timestamp = 0
         
-        # Get current cursor position as starting point
-        current_x, current_y = win32api.GetCursorPos()
-        self.last_valid_x = (current_x - self.virtual_screen_left) / self.virtual_screen_width
-        self.last_valid_y = (current_y - self.virtual_screen_top) / self.virtual_screen_height
-        self.last_valid_x = max(0.0, min(1.0, self.last_valid_x))
-        self.last_valid_y = max(0.0, min(1.0, self.last_valid_y))
+        # FIX: Don't set initial position from current cursor
+        # Instead, wait for first move event
+        self.last_valid_x = None
+        self.last_valid_y = None
         
         try:
             for i, event in enumerate(events):
@@ -94,7 +113,7 @@ class Player:
                     continue
                 
                 # Add human-like variation (1-5ms) but less for gaming
-                variation = 0.005 if not self.gaming_mode else 0.002
+                variation = 0.002 if not self.gaming_mode else 0.001  # Reduced variation
                 if delay > 0.01:
                     delay += np.random.uniform(-variation, variation)
                     precise_sleep(max(0, delay))
@@ -112,28 +131,33 @@ class Player:
                     y = int(self.virtual_screen_top + rel_y * self.virtual_screen_height)
                     
                     # CRITICAL FIX: Check for wild jumps and correct them
-                    distance = math.sqrt((rel_x - self.last_valid_x)**2 + (rel_y - self.last_valid_y)**2)
-                    if distance > 0.3:  # If jump is more than 30% of screen (likely error)
-                        # Move in smaller steps toward target
-                        self._gradual_move(self.last_valid_x, self.last_valid_y, rel_x, rel_y)
-                    else:
-                        if self.human_like_mouse:
-                            # Human-like mouse movement with path smoothing
-                            self._human_like_move(self.last_valid_x, self.last_valid_y, rel_x, rel_y)
+                    if self.last_valid_x is not None and self.last_valid_y is not None:
+                        distance = math.sqrt((rel_x - self.last_valid_x)**2 + (rel_y - self.last_valid_y)**2)
+                        # If jump is more than 50% of screen (likely error)
+                        if distance > 0.5:  
+                            # Move in smaller steps toward target
+                            self._gradual_move(self.last_valid_x, self.last_valid_y, rel_x, rel_y)
                         else:
-                            # Standard movement with subtle jitter
-                            if self.jitter > 0:
-                                # Add small, natural jitter (less for gaming)
-                                jitter_amount = 0.005 if self.gaming_mode else 0.01
-                                rel_x += np.random.uniform(-jitter_amount, jitter_amount)
-                                rel_y += np.random.uniform(-jitter_amount, jitter_amount)
-                                rel_x = max(0.0, min(1.0, rel_x))
-                                rel_y = max(0.0, min(1.0, rel_y))
-                            
-                            # Convert to absolute coordinates for final move
-                            x = int(self.virtual_screen_left + rel_x * self.virtual_screen_width)
-                            y = int(self.virtual_screen_top + rel_y * self.virtual_screen_height)
-                            self._move_mouse(x, y)
+                            if self.human_like_mouse:
+                                # Human-like mouse movement with path smoothing
+                                self._human_like_move(self.last_valid_x, self.last_valid_y, rel_x, rel_y)
+                            else:
+                                # Standard movement with subtle jitter
+                                if self.jitter > 0:
+                                    # Add small, natural jitter (less for gaming)
+                                    jitter_amount = 0.002 if self.gaming_mode else 0.005
+                                    rel_x += np.random.uniform(-jitter_amount, jitter_amount)
+                                    rel_y += np.random.uniform(-jitter_amount, jitter_amount)
+                                    rel_x = max(0.0, min(1.0, rel_x))
+                                    rel_y = max(0.0, min(1.0, rel_y))
+                                
+                                # Convert to absolute coordinates for final move
+                                x = int(self.virtual_screen_left + rel_x * self.virtual_screen_width)
+                                y = int(self.virtual_screen_top + rel_y * self.virtual_screen_height)
+                                self._move_mouse(x, y)
+                    else:
+                        # First move event - just go directly to position
+                        self._move_mouse(x, y)
                     
                     # Update last valid position
                     self.last_valid_x, self.last_valid_y = rel_x, rel_y
@@ -150,9 +174,17 @@ class Player:
                     x = int(self.virtual_screen_left + rel_x * self.virtual_screen_width)
                     y = int(self.virtual_screen_top + rel_y * self.virtual_screen_height)
                     
+                    # FIX: Ensure we're at the click position before clicking
+                    if self.last_valid_x is None or self.last_valid_y is None:
+                        self._move_mouse(x, y)
+                        self.last_valid_x, self.last_valid_y = rel_x, rel_y
+                    
                     if pressed:
                         # Move to click position first (with validation)
-                        if self.human_like_mouse:
+                        if self.last_valid_x is None or self.last_valid_y is None:
+                            self._move_mouse(x, y)
+                            self.last_valid_x, self.last_valid_y = rel_x, rel_y
+                        elif self.human_like_mouse:
                             self._human_like_move(self.last_valid_x, self.last_valid_y, rel_x, rel_y)
                         else:
                             self._move_mouse(x, y)
@@ -160,14 +192,17 @@ class Player:
                         # Update position after move
                         self.last_valid_x, self.last_valid_y = rel_x, rel_y
                         
-                        # Simulate natural hover delay (less for gaming)
-                        hover_delay = self.hover_delay * 0.7 if self.gaming_mode else self.hover_delay
-                        precise_sleep(np.random.uniform(
-                            hover_delay * 0.8, 
-                            hover_delay * 1.2
-                        ))
+                        # FIX: Add consistent delay after moving to ensure mouse is settled
+                        precise_sleep(0.05)
+                        
+                        # FIX: Reduce random variation in hover delay for consistency
+                        hover_delay = self.hover_delay * 0.9  # Using 90% consistently
+                        precise_sleep(hover_delay)
+                        
                         self._mouse_down(x, y, button)
                     else:
+                        # FIX: Add small consistent delay before releasing
+                        precise_sleep(0.02)
                         self._mouse_up(x, y, button)
                 
                 elif event[0] == "scroll":
@@ -243,7 +278,7 @@ class Player:
                 self._move_mouse(x, y)
             
             # Small delay between steps (faster for gaming)
-            delay = 0.03 if self.gaming_mode else 0.05
+            delay = 0.02 if self.gaming_mode else 0.03
             precise_sleep(delay)
         
         # Final adjustment to exact position
@@ -342,14 +377,14 @@ class Player:
             # Micro jitter gets smaller toward the end
             progress = i / len(points)
             
-            # Scale jitter based on distance and gaming mode
-            base_intensity = self.micro_jitter * (0.1 if self.gaming_mode else 0.3)
+            # Scale jitter based on distance and gaming mode - REDUCED INTENSITY
+            base_intensity = self.micro_jitter * (0.05 if self.gaming_mode else 0.1)
             intensity = base_intensity * (1 - progress * 0.7)
             
             # Only add jitter if it won't cause wild movement
             if i > 0:
                 prev_x, prev_y = jittered_points[-1]
-                max_jitter = math.sqrt((x - prev_x)**2 + (y - prev_y)**2) * 0.5
+                max_jitter = math.sqrt((x - prev_x)**2 + (y - prev_y)**2) * 0.3
                 intensity = min(intensity, max_jitter)
             
             # Add subtle variation
@@ -409,7 +444,7 @@ class Player:
                 segment_time = total_time * (timing_factor - prev_timing)
             
             # Add natural variation (less for gaming)
-            variation = np.random.uniform(-0.05, 0.05) * (0.3 if self.gaming_mode else 1.0)
+            variation = np.random.uniform(-0.02, 0.02) * (0.3 if self.gaming_mode else 1.0)
             segment_time *= (1 + variation)
             
             # Minimum time per segment (faster for gaming)
@@ -460,7 +495,17 @@ class Player:
             key = normalized_key
             
         if len(key) == 1:  # Character key
-            vk = win32api.VkKeyScan(key)
+            # FIX: Direct virtual key codes for WASD to ensure game compatibility
+            if key == 'w':
+                vk = 0x57  # Direct virtual key code for W
+            elif key == 'a':
+                vk = 0x41  # Direct virtual key code for A
+            elif key == 's':
+                vk = 0x53  # Direct virtual key code for S
+            elif key == 'd':
+                vk = 0x44  # Direct virtual key code for D
+            else:
+                vk = win32api.VkKeyScan(key)
             win32api.keybd_event(vk, 0, 0, 0)
         else:  # Special key
             # Handle pynput key names
@@ -476,7 +521,17 @@ class Player:
             key = normalized_key
             
         if len(key) == 1:
-            vk = win32api.VkKeyScan(key)
+            # FIX: Direct virtual key codes for WASD to ensure game compatibility
+            if key == 'w':
+                vk = 0x57  # Direct virtual key code for W
+            elif key == 'a':
+                vk = 0x41  # Direct virtual key code for A
+            elif key == 's':
+                vk = 0x53  # Direct virtual key code for S
+            elif key == 'd':
+                vk = 0x44  # Direct virtual key code for D
+            else:
+                vk = win32api.VkKeyScan(key)
             win32api.keybd_event(vk, 0, win32con.KEYEVENTF_KEYUP, 0)
         else:
             key_name = key.replace('Key.', '').replace("'", "").lower()
